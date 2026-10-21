@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Bomberman Multijoueur - Dev Web</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <h1>Bomberman Multijoueur</h1>
+    <canvas id="gameCanvas" width="440" height="440"></canvas>
+    <div id="controls-info">
+      <p>Utilisez les <strong>flèches directionnelles</strong> pour bouger.</p>
+      <p>Appuyez sur la touche <strong>Espace</strong> pour poser une bombe.</p>
+    </div>
+  </div>
+
+  <!-- Script Socket.io fourni automatiquement par le serveur -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
