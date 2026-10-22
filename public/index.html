@@ -2,20 +2,53 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Bomberman Multijoueur - Dev Web</title>
+  <title>Bomberman Deluxe - Solo & Multi</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="game-container">
-    <h1>Bomberman Multijoueur</h1>
-    <canvas id="gameCanvas" width="440" height="440"></canvas>
-    <div id="controls-info">
-      <p>Utilisez les <strong>flèches directionnelles</strong> pour bouger.</p>
-      <p>Appuyez sur la touche <strong>Espace</strong> pour poser une bombe.</p>
+  <!-- MENU PRINCIPAL -->
+  <div id="menu-screen" class="screen">
+    <div class="menu-box">
+      <h1>💣 Bomberman Deluxe</h1>
+      <p>Choisissez votre mode de jeu :</p>
+      <div class="menu-buttons">
+        <button id="btn-solo" class="btn primary">Mode Solo (vs Bots)</button>
+        <button id="btn-multi" class="btn secondary">Multijoueur en Ligne</button>
+      </div>
     </div>
   </div>
 
-  <!-- Script Socket.io fourni automatiquement par le serveur -->
+  <!-- ÉCRAN DE JEU -->
+  <div id="game-screen" class="screen hidden">
+    <aside id="sidebar">
+      <h2>💣 Bomberman</h2>
+      <div class="card timer-card">
+        <h3>Temps Restant</h3>
+        <p id="timer-display" style="font-size: 1.4rem; font-weight: bold; color: #ff4757; text-align: center;">02:00</p>
+      </div>
+      <div class="card">
+        <h3>Salon & Joueurs</h3>
+        <ul id="player-list"></ul>
+      </div>
+      <div class="card controls-card">
+        <h3>Contrôles</h3>
+        <p>Déplacement : <strong>Flèches ⬆️⬇️⬅️➡️</strong></p>
+        <p>Bombe : <strong>Barre Espace</strong></p>
+      </div>
+      <button id="btn-back" class="btn secondary" style="margin-top:auto;">Quitter</button>
+    </aside>
+
+    <main id="game-main">
+      <div id="game-container">
+        <canvas id="gameCanvas" width="440" height="440"></canvas>
+        <div id="game-overlay" class="hidden">
+          <h1 id="overlay-title">Victoire !</h1>
+          <p id="overlay-subtitle">Nouvelle partie imminente...</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>
