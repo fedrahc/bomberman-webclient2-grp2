@@ -24,11 +24,15 @@
       <h2>💣 Bomberman</h2>
       <div class="card timer-card">
         <h3>Temps Restant</h3>
-        <p id="timer-display" style="font-size: 1.4rem; font-weight: bold; color: #ff4757; text-align: center;">02:00</p>
+        <p id="timer-display" style="font-size: 1.4rem; font-weight: bold; color: #ff4757; text-align: center;">03:00</p>
       </div>
       <div class="card">
         <h3>Salon & Joueurs</h3>
         <ul id="player-list"></ul>
+      </div>
+      <div class="card">
+        <h3>Tableau des Scores</h3>
+        <ul id="score-list"></ul>
       </div>
       <div class="card controls-card">
         <h3>Contrôles</h3>
@@ -43,7 +47,9 @@
         <canvas id="gameCanvas" width="440" height="440"></canvas>
         <div id="game-overlay" class="hidden">
           <h1 id="overlay-title">Victoire !</h1>
-          <p id="overlay-subtitle">Nouvelle partie imminente...</p>
+          <p id="overlay-subtitle">Partie terminée</p>
+          <div id="overlay-scores"></div>
+          <button id="btn-restart" class="btn primary" style="margin-top: 15px;">🔄 Rejouer une partie</button>
         </div>
       </div>
     </main>

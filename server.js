@@ -25,11 +25,13 @@ const baseMap = [
 
 let map = JSON.parse(JSON.stringify(baseMap));
 let players = {};
+let scores = {}; // Stocke le total de victoires
 let bombs = [];
 let powerUps = [];
 let gameMode = null;
 let matchTimer = 180;
 let timerInterval = null;
+let isGameOver = false;
 
 const spawnPositions = [
   { x: 1, y: 1 },
@@ -51,11 +53,42 @@ io.on('connection', (socket) => {
   socket.on('setGameMode', (mode) => {
     gameMode = mode;
     players = {};
-    map = JSON.parse(JSON.stringify(baseMap));
-    bombs = [];
-    powerUps = [];
-    matchTimer = 180;
+    scores = {};
+    resetAndStartMatch(socket);
+  });
 
+  socket.on('restartGame', () => {
+    if (!gameMode) return;
+    resetAndStartMatch(socket);
+  });
+
+  socket.on('move', (dir) => {
+    if (!isGameOver) movePlayer(socket.id, dir);
+  });
+
+  socket.on('placeBomb', () => {
+    if (!isGameOver) handlePlaceBomb(socket.id);
+  });
+
+  socket.on('disconnect', () => {
+    delete players[socket.id];
+    delete scores[socket.id];
+    io.emit('updateGameData', { players, powerUps, scores });
+  });
+});
+
+function resetAndStartMatch(socket) {
+  isGameOver = false;
+  map = JSON.parse(JSON.stringify(baseMap));
+  bombs = [];
+  powerUps = [];
+  matchTimer = 180;
+
+  // Initialisation ou réinitialisation des joueurs existants
+  const currentIds = Object.keys(players);
+
+  if (currentIds.length === 0) {
+    // Premier lancement
     players[socket.id] = {
       id: socket.id,
       name: 'Vous',
@@ -68,6 +101,7 @@ io.on('connection', (socket) => {
       bombRange: 2,
       shield: false
     };
+    scores[socket.id] = scores[socket.id] || 0;
 
     if (gameMode === 'solo') {
       for (let i = 0; i < 3; i++) {
@@ -85,36 +119,36 @@ io.on('connection', (socket) => {
           shield: false,
           lastBombTime: Date.now()
         };
+        scores[botId] = scores[botId] || 0;
       }
     }
+  } else {
+    // Relance de partie
+    Object.values(players).forEach((p, idx) => {
+      p.isAlive = true;
+      p.maxBombs = 1;
+      p.bombRange = 2;
+      p.shield = false;
+      p.x = spawnPositions[idx % spawnPositions.length].x;
+      p.y = spawnPositions[idx % spawnPositions.length].y;
+      if (p.isBot) p.lastBombTime = Date.now();
+      if (scores[p.id] === undefined) scores[p.id] = 0;
+    });
+  }
 
-    socket.emit('gameStarted', { id: socket.id, map, players, bombs, powerUps, matchTimer });
-    io.emit('updateGameData', { players, powerUps });
+  io.emit('gameStarted', { id: socket.id, map, players, bombs, powerUps, matchTimer, scores });
+  io.emit('updateGameData', { players, powerUps, scores });
 
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
-      if (matchTimer > 0) {
-        matchTimer--;
-        io.emit('timerUpdate', matchTimer);
-      } else {
-        triggerGameOver("Temps écoulé ! Égalité");
-      }
-    }, 1000);
-  });
-
-  socket.on('move', (dir) => {
-    movePlayer(socket.id, dir);
-  });
-
-  socket.on('placeBomb', () => {
-    handlePlaceBomb(socket.id);
-  });
-
-  socket.on('disconnect', () => {
-    delete players[socket.id];
-    io.emit('updateGameData', { players, powerUps });
-  });
-});
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (matchTimer > 0) {
+      matchTimer--;
+      io.emit('timerUpdate', matchTimer);
+    } else {
+      triggerGameOver("Temps écoulé ! Égalité");
+    }
+  }, 1000);
+}
 
 function movePlayer(id, dir) {
   const player = players[id];
@@ -174,7 +208,6 @@ function handlePlaceBomb(id) {
   }, 3000);
 }
 
-// Fonction unifiée pour calculer les cases touchées par une explosion (utilisée par le jeu et les bots)
 function getAffectedTilesForBomb(bombX, bombY, bombRange) {
   const affectedTiles = [{ x: bombX, y: bombY }];
   const directions = [
@@ -187,10 +220,10 @@ function getAffectedTilesForBomb(bombX, bombY, bombRange) {
       const tx = bombX + dir.x * i;
       const ty = bombY + dir.y * i;
 
-      if (!map[ty] || map[ty][tx] === 1) break; // Mur incassable -> bloque la flamme
+      if (!map[ty] || map[ty][tx] === 1) break;
       affectedTiles.push({ x: tx, y: ty });
 
-      if (map[ty][tx] === 2) break; // Mur cassable -> la flamme le touche et s'arrête
+      if (map[ty][tx] === 2) break;
     }
   });
   return affectedTiles;
@@ -203,7 +236,6 @@ function explodeBomb(bomb) {
 
   const affectedTiles = getAffectedTilesForBomb(bomb.x, bomb.y, bomb.range);
 
-  // Détruire les murs destructibles touchés
   affectedTiles.forEach(tile => {
     if (map[tile.y] && map[tile.y][tile.x] === 2) {
       map[tile.y][tile.x] = 0;
@@ -215,7 +247,6 @@ function explodeBomb(bomb) {
     }
   });
 
-  // Tuer les joueurs/bots dans la zone d'effet
   Object.values(players).forEach((player) => {
     if (!player.isAlive) return;
     const hit = affectedTiles.some((t) => t.x === player.x && t.y === player.y);
@@ -240,44 +271,27 @@ function explodeBomb(bomb) {
 }
 
 function checkWinCondition() {
+  if (isGameOver) return;
   const alivePlayers = Object.values(players).filter((p) => p.isAlive);
   if (alivePlayers.length <= 1 && Object.keys(players).length > 1) {
-    const winner = alivePlayers.length === 1 ? alivePlayers[0].name : 'Personne';
-    triggerGameOver(`🏆 Victoire de ${winner} !`);
+    const winner = alivePlayers.length === 1 ? alivePlayers[0] : null;
+    let message = "Égalité !";
+    if (winner) {
+      scores[winner.id] = (scores[winner.id] || 0) + 1;
+      message = `🏆 Victoire de ${winner.name} !`;
+    }
+    triggerGameOver(message);
   }
 }
 
 function triggerGameOver(message) {
+  isGameOver = true;
   if (timerInterval) clearInterval(timerInterval);
-  io.emit('gameOver', { winner: message });
-
-  setTimeout(() => {
-    map = JSON.parse(JSON.stringify(baseMap));
-    bombs = [];
-    powerUps = [];
-    matchTimer = 180;
-    Object.values(players).forEach((p, idx) => {
-      p.isAlive = true;
-      p.maxBombs = 1;
-      p.bombRange = 2;
-      p.shield = false;
-      p.x = spawnPositions[idx % spawnPositions.length].x;
-      p.y = spawnPositions[idx % spawnPositions.length].y;
-      if (p.isBot) p.lastBombTime = Date.now();
-    });
-    io.emit('gameReset', { map, players, powerUps, matchTimer });
-    
-    timerInterval = setInterval(() => {
-      if (matchTimer > 0) {
-        matchTimer--;
-        io.emit('timerUpdate', matchTimer);
-      }
-    }, 1000);
-  }, 4000);
+  io.emit('gameOver', { winner: message, scores });
 }
 
 // ==========================================
-// LOGIQUE DES BOTS (Mise à jour : Cible murs ET ennemis)
+// LOGIQUE DES BOTS
 // ==========================================
 
 function computeDangerMap() {
@@ -370,17 +384,14 @@ function canBotSurviveAfterBomb(bot, dangerMap) {
   return false;
 }
 
-// Évalue l'intérêt de poser une bombe en (x, y) : score basé sur les murs cassables ET les ennemis touchés
 function evaluateBombPosition(x, y, range, botId) {
   const affected = getAffectedTilesForBomb(x, y, range);
   let score = 0;
 
   affected.forEach(tile => {
-    // 1 point par mur destructible touché
     if (map[tile.y] && map[tile.y][tile.x] === 2) {
       score += 1;
     }
-    // 10 points par ennemi touché (joueur ou autre bot)
     Object.values(players).forEach(p => {
       if (p.id !== botId && p.isAlive && p.x === tile.x && p.y === tile.y) {
         score += 10;
@@ -392,7 +403,7 @@ function evaluateBombPosition(x, y, range, botId) {
 }
 
 setInterval(() => {
-  if (gameMode !== 'solo') return;
+  if (gameMode !== 'solo' || isGameOver) return;
 
   const dangerMap = computeDangerMap();
   const now = Date.now();
@@ -402,7 +413,7 @@ setInterval(() => {
       const currentKey = `${bot.x},${bot.y}`;
       const isCurrentDangerous = dangerMap.has(currentKey);
 
-      // --- ÉTAPE 1 : URGENCE SÉCURITÉ ---
+      // --- 1. SÉCURITÉ URGENTE ---
       if (isCurrentDangerous) {
         const escapeDir = getFirstStepTowardsClosestSafe(bot.x, bot.y, dangerMap);
         if (escapeDir) {
@@ -411,14 +422,13 @@ setInterval(() => {
         }
       }
 
-      // --- ÉTAPE 2 : POSER UNE BOMBE SI STRATÉGIQUE (Murs ou Ennemis) ---
+      // --- 2. POSER BOMBE SI STRATÉGIQUE (Score > 0 impératif pour éviter la boucle) ---
       const elapsedSinceLastBomb = (now - bot.lastBombTime) / 1000;
       const hasBombHere = bombs.some(b => b.x === bot.x && b.y === bot.y);
 
       if (elapsedSinceLastBomb >= 2.5 && !hasBombHere) {
         const bombScore = evaluateBombPosition(bot.x, bot.y, bot.bombRange, bot.id);
         
-        // S'il y a un intérêt (score > 0) et qu'il peut survivre
         if (bombScore > 0 && canBotSurviveAfterBomb(bot, dangerMap)) {
           handlePlaceBomb(bot.id);
           bot.lastBombTime = now;
@@ -426,7 +436,7 @@ setInterval(() => {
         }
       }
 
-      // --- ÉTAPE 3 : DÉPLACEMENT VERS OBJECTIFS (Murs ou pourchasser des ennemis) ---
+      // --- 3. DÉPLACEMENT STRATÉGIQUE ---
       const possibleMoves = [
         { dir: 'UP', x: bot.x, y: bot.y - 1 },
         { dir: 'DOWN', x: bot.x, y: bot.y + 1 },
@@ -438,13 +448,11 @@ setInterval(() => {
       });
 
       if (possibleMoves.length > 0) {
-        // Privilégier un mouvement qui augmente le score de pose de bombe (se rapprocher de murs ou d'ennemis)
         let bestMove = possibleMoves.reduce((best, m) => {
           const score = evaluateBombPosition(m.x, m.y, bot.bombRange, bot.id);
           return score > best.score ? { move: m, score } : best;
         }, { move: possibleMoves[0], score: -1 });
 
-        // Si aucun mouvement ne donne un meilleur score, on choisit au hasard parmi les moves safe
         if (bestMove.score <= 0) {
           bestMove.move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
         }

@@ -94,63 +94,64 @@ body {
   width: 320px;
   background-color: #181925;
   border-right: 2px solid #2f3640;
-  padding: 25px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 15px;
+  overflow-y: auto;
 }
 
 #sidebar h2 {
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   color: #ff4757;
   text-align: center;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
 }
 
 .card {
   background-color: #222436;
   border-radius: 10px;
-  padding: 15px;
+  padding: 12px 15px;
   box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
 .card h3 {
-  font-size: 1rem;
-  margin-bottom: 10px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
   color: #a4b0be;
   border-bottom: 1px solid #2f3640;
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 
-#player-list {
+#player-list, #score-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
-#player-list li {
+#player-list li, #score-list li {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: #1e1f2e;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .player-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   display: inline-block;
   margin-right: 8px;
 }
 
 .controls-card p {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #dfe4ea;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 #game-main {
@@ -180,12 +181,12 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(16, 17, 24, 0.85);
+  background: rgba(16, 17, 24, 0.9);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   transition: opacity 0.3s ease;
 }
 
@@ -195,12 +196,21 @@ canvas {
 }
 
 #overlay-title {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
   color: #ff4757;
   text-shadow: 0 0 15px rgba(255, 71, 87, 0.5);
+  text-align: center;
 }
 
 #overlay-subtitle {
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: #a4b0be;
+}
+
+#overlay-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  text-align: center;
 }

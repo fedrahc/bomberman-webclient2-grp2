@@ -5,6 +5,7 @@ const gameScreen = document.getElementById('game-screen');
 const btnSolo = document.getElementById('btn-solo');
 const btnMulti = document.getElementById('btn-multi');
 const btnBack = document.getElementById('btn-back');
+const btnRestart = document.getElementById('btn-restart');
 const timerDisplay = document.getElementById('timer-display');
 
 const canvas = document.getElementById('gameCanvas');
@@ -14,6 +15,7 @@ const TILE_SIZE = 40;
 let myId = null;
 let map = [];
 let players = {};
+let scores = {};
 let bombs = [];
 let powerUps = [];
 let explosions = [];
@@ -21,23 +23,30 @@ let explosions = [];
 const overlay = document.getElementById('game-overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlaySubtitle = document.getElementById('overlay-subtitle');
+const overlayScores = document.getElementById('overlay-scores');
 const playerListEl = document.getElementById('player-list');
+const scoreListEl = document.getElementById('score-list');
 
 btnSolo.addEventListener('click', () => socket.emit('setGameMode', 'solo'));
 btnMulti.addEventListener('click', () => socket.emit('setGameMode', 'multi'));
 btnBack.addEventListener('click', () => location.reload());
+btnRestart.addEventListener('click', () => socket.emit('restartGame'));
 
 socket.on('gameStarted', (data) => {
   myId = data.id;
   map = data.map;
   players = data.players;
+  scores = data.scores || {};
   bombs = data.bombs || [];
   powerUps = data.powerUps || [];
+  explosions = [];
   
   menuScreen.classList.add('hidden');
   gameScreen.classList.remove('hidden');
+  overlay.classList.add('hidden');
 
   updatePlayerList();
+  updateScoreList();
   requestAnimationFrame(draw);
 });
 
@@ -50,7 +59,9 @@ socket.on('timerUpdate', (seconds) => {
 socket.on('updateGameData', (data) => {
   if (data.players) players = data.players;
   if (data.powerUps) powerUps = data.powerUps;
+  if (data.scores) scores = data.scores;
   updatePlayerList();
+  updateScoreList();
 });
 
 socket.on('playerMoved', (data) => {
@@ -90,19 +101,23 @@ socket.on('playerDied', (data) => {
 });
 
 socket.on('gameOver', (data) => {
+  scores = data.scores || scores;
   overlayTitle.innerText = data.winner;
-  overlaySubtitle.innerText = 'Nouvelle partie imminente...';
-  overlay.classList.remove('hidden');
-});
+  overlaySubtitle.innerText = 'La partie est terminée !';
+  
+  // Affichage du récapitulatif dans l'overlay
+  overlayScores.innerHTML = '';
+  Object.values(players).forEach(p => {
+    const pScore = scores[p.id] || 0;
+    const div = document.createElement('div');
+    div.style.color = p.color;
+    div.style.fontWeight = 'bold';
+    div.innerText = `${p.name} : ${pScore} victoire(s)`;
+    overlayScores.appendChild(div);
+  });
 
-socket.on('gameReset', (data) => {
-  map = data.map;
-  players = data.players;
-  powerUps = data.powerUps || [];
-  bombs = [];
-  explosions = [];
-  overlay.classList.add('hidden');
-  updatePlayerList();
+  overlay.classList.remove('hidden');
+  updateScoreList();
 });
 
 document.addEventListener('keydown', (e) => {
@@ -124,6 +139,19 @@ function updatePlayerList() {
       <span style="color: ${p.isAlive ? '#2ed573' : '#ff4757'}">${p.isAlive ? 'Vivant' : 'Mort 💀'}</span>
     `;
     playerListEl.appendChild(li);
+  });
+}
+
+function updateScoreList() {
+  scoreListEl.innerHTML = '';
+  Object.values(players).forEach((p) => {
+    const wins = scores[p.id] || 0;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span><span class="player-dot" style="background-color:${p.color}"></span>${p.name}</span>
+      <strong>${wins} pts</strong>
+    `;
+    scoreListEl.appendChild(li);
   });
 }
 
