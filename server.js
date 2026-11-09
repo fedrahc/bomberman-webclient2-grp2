@@ -28,7 +28,7 @@ let players = {};
 let bombs = [];
 let powerUps = [];
 let gameMode = null;
-let matchTimer = 120;
+let matchTimer = 180;
 let timerInterval = null;
 
 const spawnPositions = [
@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
     map = JSON.parse(JSON.stringify(baseMap));
     bombs = [];
     powerUps = [];
-    matchTimer = 120;
+    matchTimer = 180;
 
     players[socket.id] = {
       id: socket.id,
@@ -70,8 +70,7 @@ io.on('connection', (socket) => {
     };
 
     if (gameMode === 'solo') {
-      const numBots = 3;
-      for (let i = 0; i < numBots; i++) {
+      for (let i = 0; i < 3; i++) {
         const botId = `bot_${i + 1}`;
         players[botId] = {
           id: botId,
@@ -84,8 +83,7 @@ io.on('connection', (socket) => {
           maxBombs: 1,
           bombRange: 2,
           shield: false,
-          escapeDir: null,
-          gameStartTime: Date.now()
+          lastBombTime: Date.now()
         };
       }
     }
@@ -130,10 +128,14 @@ function movePlayer(id, dir) {
   if (dir === 'LEFT') targetX -= 1;
   if (dir === 'RIGHT') targetX += 1;
 
-  if (map[targetY] && map[targetY][targetX] === 0) {
+  // Bloquer le mouvement s'il y a une bombe sur la case cible
+  const isBombOnTarget = bombs.some(b => b.x === targetX && b.y === targetY);
+
+  if (map[targetY] && map[targetY][targetX] === 0 && !isBombOnTarget) {
     player.x = targetX;
     player.y = targetY;
 
+    // Ramassage de bonus
     const pUpIndex = powerUps.findIndex(p => p.x === targetX && p.y === targetY);
     if (pUpIndex !== -1) {
       const pUp = powerUps[pUpIndex];
@@ -168,36 +170,6 @@ function handlePlaceBomb(id) {
 
   bombs.push(bomb);
   io.emit('bombPlaced', bomb);
-
-  // Forcer le bot à s'écarter immédiatement sur une case sûre adjacente
-  if (player.isBot) {
-    const adj = [
-      { dir: 'UP', x: 0, y: -1 },
-      { dir: 'DOWN', x: 0, y: 1 },
-      { dir: 'LEFT', x: -1, y: 0 },
-      { dir: 'RIGHT', x: 1, y: 0 }
-    ];
-    // Trouver une case vide qui ne sera PAS touchée par cette bombe
-    const safeEscapes = adj.filter(a => {
-      let nx = player.x + a.x;
-      let ny = player.y + a.y;
-      if (!map[ny] || map[ny][nx] !== 0) return false;
-      // Vérifier si cette case est dans la ligne de mire de la bombe
-      const isHit = (nx === bomb.x && Math.abs(ny - bomb.y) <= bomb.range) ||
-                    (ny === bomb.y && Math.abs(nx - bomb.x) <= bomb.range);
-      return !isHit;
-    });
-
-    if (safeEscapes.length > 0) {
-      player.escapeDir = safeEscapes[Math.floor(Math.random() * safeEscapes.length)].dir;
-    } else {
-      // S'il n'y a pas de case totalement hors de portée, prendre n'importe quelle case vide adjacente pour reculer
-      const anyEmpty = adj.filter(a => map[player.y + a.y] && map[player.y + a.y][player.x + a.x] === 0);
-      if (anyEmpty.length > 0) {
-        player.escapeDir = anyEmpty[0].dir;
-      }
-    }
-  }
 
   setTimeout(() => {
     explodeBomb(bomb);
@@ -274,7 +246,7 @@ function triggerGameOver(message) {
     map = JSON.parse(JSON.stringify(baseMap));
     bombs = [];
     powerUps = [];
-    matchTimer = 120;
+    matchTimer = 180;
     Object.values(players).forEach((p, idx) => {
       p.isAlive = true;
       p.maxBombs = 1;
@@ -282,10 +254,7 @@ function triggerGameOver(message) {
       p.shield = false;
       p.x = spawnPositions[idx % spawnPositions.length].x;
       p.y = spawnPositions[idx % spawnPositions.length].y;
-      if (p.isBot) {
-        p.gameStartTime = Date.now();
-        p.escapeDir = null;
-      }
+      if (p.isBot) p.lastBombTime = Date.now();
     });
     io.emit('gameReset', { map, players, powerUps, matchTimer });
     
@@ -298,18 +267,21 @@ function triggerGameOver(message) {
   }, 4000);
 }
 
-// Carte des dangers précise
-function getDangerMap() {
-  const danger = {};
+// ==========================================
+// LOGIQUE DES BOTS
+// ==========================================
+
+function computeDangerMap() {
+  const danger = new Set();
   bombs.forEach(bomb => {
-    danger[`${bomb.x},${bomb.y}`] = true;
+    danger.add(`${bomb.x},${bomb.y}`);
     const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
     dirs.forEach(d => {
       for (let i = 1; i <= bomb.range; i++) {
         let tx = bomb.x + d.x * i;
         let ty = bomb.y + d.y * i;
         if (!map[ty] || map[ty][tx] === 1) break;
-        danger[`${tx},${ty}`] = true;
+        danger.add(`${tx},${ty}`);
         if (map[ty][tx] === 2) break;
       }
     });
@@ -317,79 +289,171 @@ function getDangerMap() {
   return danger;
 }
 
-// IA intelligente : Fuite immédiate si danger, attente en zone sûre, pose réfléchie
+function getFutureDangerMap(x, y, range) {
+  const futureDanger = new Set();
+  futureDanger.add(`${x},${y}`);
+  const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+  dirs.forEach(d => {
+    for (let i = 1; i <= range; i++) {
+      let tx = x + d.x * i;
+      let ty = y + d.y * i;
+      if (!map[ty] || map[ty][tx] === 1) break;
+      futureDanger.add(`${tx},${ty}`);
+      if (map[ty][tx] === 2) break;
+    }
+  });
+  return futureDanger;
+}
+
+function getFirstStepTowardsClosestSafe(startX, startY, dangerMap) {
+  if (!dangerMap.has(`${startX},${startY}`)) return null;
+
+  const queue = [{ x: startX, y: startY, firstDir: null }];
+  const visited = new Set();
+  visited.add(`${startX},${startY}`);
+
+  const dirs = [
+    { dir: 'UP', x: 0, y: -1 },
+    { dir: 'DOWN', x: 0, y: 1 },
+    { dir: 'LEFT', x: -1, y: 0 },
+    { dir: 'RIGHT', x: 1, y: 0 }
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+
+    if (!dangerMap.has(`${current.x},${current.y}`)) {
+      return current.firstDir;
+    }
+
+    for (const d of dirs) {
+      const nx = current.x + d.x;
+      const ny = current.y + d.y;
+      const key = `${nx},${ny}`;
+
+      // Ne pas traverser les bombes lors de la fuite (sauf si on part de sa propre bombe)
+      const isBomb = bombs.some(b => b.x === nx && b.y === ny);
+
+      if (map[ny] && map[ny][nx] === 0 && !isBomb && !visited.has(key)) {
+        visited.add(key);
+        queue.push({
+          x: nx,
+          y: ny,
+          firstDir: current.firstDir === null ? d.dir : current.firstDir
+        });
+      }
+    }
+  }
+  return null;
+}
+
+function canBotSurviveAfterBomb(bot, dangerMap) {
+  const futureDanger = getFutureDangerMap(bot.x, bot.y, bot.bombRange);
+  const combinedDanger = new Set(dangerMap);
+  futureDanger.forEach(val => combinedDanger.add(val));
+
+  const queue = [{ x: bot.x, y: bot.y }];
+  const visited = new Set();
+  visited.add(`${bot.x},${bot.y}`);
+
+  const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+
+  while (queue.length > 0) {
+    const curr = queue.shift();
+
+    for (const d of dirs) {
+      const nx = curr.x + d.x;
+      const ny = curr.y + d.y;
+      const key = `${nx},${ny}`;
+
+      // Une fois sorti du tile d'origine (sa bombe), le bot ne peut plus y retourner
+      const isBombBlock = (nx === bot.x && ny === bot.y && curr.x !== bot.x && curr.y !== bot.y) || 
+                          bombs.some(b => b.x === nx && b.y === ny);
+
+      if (map[ny] && map[ny][nx] === 0 && !isBombBlock && !visited.has(key)) {
+        if (!combinedDanger.has(key)) {
+          return true;
+        }
+        visited.add(key);
+        queue.push({ x: nx, y: ny });
+      }
+    }
+  }
+  return false;
+}
+
+function countDestroyableWalls(x, y, range) {
+  let count = 0;
+  const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+  dirs.forEach(d => {
+    for (let i = 1; i <= range; i++) {
+      let tx = x + d.x * i;
+      let ty = y + d.y * i;
+      if (!map[ty] || map[ty][tx] === 1) break;
+      if (map[ty][tx] === 2) {
+        count++;
+        break;
+      }
+    }
+  });
+  return count;
+}
+
 setInterval(() => {
   if (gameMode !== 'solo') return;
-  const dangerMap = getDangerMap();
+
+  const dangerMap = computeDangerMap();
+  const now = Date.now();
 
   Object.values(players).forEach((bot) => {
     if (bot.isBot && bot.isAlive) {
-      // 1. Si le bot vient de poser une bombe, il exécute son pas de fuite en priorité absolue
-      if (bot.escapeDir) {
-        movePlayer(bot.id, bot.escapeDir);
-        bot.escapeDir = null;
-        return;
-      }
-
-      const justSpawned = (Date.now() - bot.gameStartTime) < 2500;
       const currentKey = `${bot.x},${bot.y}`;
-      const inDanger = dangerMap[currentKey];
+      const isCurrentDangerous = dangerMap.has(currentKey);
 
-      // Si le bot est en zone de danger, il doit fuir vers une case sûre
-      if (inDanger) {
-        const possibleMoves = [
-          { dir: 'UP', x: bot.x, y: bot.y - 1 },
-          { dir: 'DOWN', x: bot.x, y: bot.y + 1 },
-          { dir: 'LEFT', x: bot.x - 1, y: bot.y },
-          { dir: 'RIGHT', x: bot.x + 1, y: bot.y }
-        ].filter(m => map[m.y] && map[m.y][m.x] === 0);
-
-        const safeMoves = possibleMoves.filter(m => !dangerMap[`${m.x},${m.y}`]);
-        if (safeMoves.length > 0) {
-          const chosen = safeMoves[Math.floor(Math.random() * safeMoves.length)];
-          movePlayer(bot.id, chosen.dir);
-        } else if (possibleMoves.length > 0) {
-          const chosen = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-          movePlayer(bot.id, chosen.dir);
-        }
-        return; // S'il fuyait, il ne fait rien d'autre ce tour-ci
-      }
-
-      // 2. S'il est en sécurité : s'il n'y a pas de danger, il peut décider de poser une bombe ou d'attendre sagement
-      const hasBombHere = bombs.some(b => b.x === bot.x && b.y === bot.y);
-      if (!justSpawned && !hasBombHere && Math.random() < 0.15) {
-        // Vérifier s'il y a un mur en bois autour de lui à détruire
-        const adj = [
-          { dir: 'UP', x: 0, y: -1 },
-          { dir: 'DOWN', x: 0, y: 1 },
-          { dir: 'LEFT', x: -1, y: 0 },
-          { dir: 'RIGHT', x: 1, y: 0 }
-        ];
-        const hasWoodNearby = adj.some(a => map[bot.y + a.y] && map[bot.y + a.y][bot.x + a.x] === 2);
-        
-        if (hasWoodNearby) {
-          handlePlaceBomb(bot.id);
+      // --- ÉTAPE 1 : URGENCE SÉCURITÉ ---
+      if (isCurrentDangerous) {
+        const escapeDir = getFirstStepTowardsClosestSafe(bot.x, bot.y, dangerMap);
+        if (escapeDir) {
+          movePlayer(bot.id, escapeDir);
           return;
         }
       }
 
-      // 3. Sinon, déplacement modéré et intelligent (il s'arrête souvent s'il est en sécurité pour ne pas faire n'importe quoi)
-      if (Math.random() < 0.4) {
-        const possibleMoves = [
-          { dir: 'UP', x: bot.x, y: bot.y - 1 },
-          { dir: 'DOWN', x: bot.x, y: bot.y + 1 },
-          { dir: 'LEFT', x: bot.x - 1, y: bot.y },
-          { dir: 'RIGHT', x: bot.x + 1, y: bot.y }
-        ].filter(m => map[m.y] && map[m.y][m.x] === 0 && !dangerMap[`${m.x},${m.y}`]);
+      // --- ÉTAPE 2 : POSER UNE BOMBE ---
+      const elapsedSinceLastBomb = (now - bot.lastBombTime) / 1000;
+      const hasBombHere = bombs.some(b => b.x === bot.x && b.y === bot.y);
 
-        if (possibleMoves.length > 0) {
-          const chosen = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-          movePlayer(bot.id, chosen.dir);
+      if (elapsedSinceLastBomb >= 2.5 && !hasBombHere) {
+        const wallsAround = countDestroyableWalls(bot.x, bot.y, bot.bombRange);
+        
+        if (wallsAround > 0 && canBotSurviveAfterBomb(bot, dangerMap)) {
+          handlePlaceBomb(bot.id);
+          bot.lastBombTime = now;
+          return;
         }
+      }
+
+      // --- ÉTAPE 3 : DÉPLACEMENT ---
+      const possibleMoves = [
+        { dir: 'UP', x: bot.x, y: bot.y - 1 },
+        { dir: 'DOWN', x: bot.x, y: bot.y + 1 },
+        { dir: 'LEFT', x: bot.x - 1, y: bot.y },
+        { dir: 'RIGHT', x: bot.x + 1, y: bot.y }
+      ].filter(m => {
+        const isBombOnMove = bombs.some(b => b.x === m.x && b.y === m.y);
+        return map[m.y] && map[m.y][m.x] === 0 && !isBombOnMove && !dangerMap.has(`${m.x},${m.y}`);
+      });
+
+      if (possibleMoves.length > 0) {
+        let bestMove = possibleMoves.find(m => countDestroyableWalls(m.x, m.y, bot.bombRange) > 0);
+        if (!bestMove) {
+          bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+        }
+        movePlayer(bot.id, bestMove.dir);
       }
     }
   });
-}, 600);
+}, 500);
 
 server.listen(3000, () => {
   console.log('Serveur lancé sur http://localhost:3000');
