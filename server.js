@@ -128,14 +128,12 @@ function movePlayer(id, dir) {
   if (dir === 'LEFT') targetX -= 1;
   if (dir === 'RIGHT') targetX += 1;
 
-  // Bloquer le mouvement s'il y a une bombe sur la case cible
   const isBombOnTarget = bombs.some(b => b.x === targetX && b.y === targetY);
 
   if (map[targetY] && map[targetY][targetX] === 0 && !isBombOnTarget) {
     player.x = targetX;
     player.y = targetY;
 
-    // Ramassage de bonus
     const pUpIndex = powerUps.findIndex(p => p.x === targetX && p.y === targetY);
     if (pUpIndex !== -1) {
       const pUp = powerUps[pUpIndex];
@@ -176,37 +174,48 @@ function handlePlaceBomb(id) {
   }, 3000);
 }
 
-function explodeBomb(bomb) {
-  const index = bombs.findIndex((b) => b.id === bomb.id);
-  if (index === -1) return;
-  bombs.splice(index, 1);
-
-  const affectedTiles = [{ x: bomb.x, y: bomb.y }];
+// Fonction unifiée pour calculer les cases touchées par une explosion (utilisée par le jeu et les bots)
+function getAffectedTilesForBomb(bombX, bombY, bombRange) {
+  const affectedTiles = [{ x: bombX, y: bombY }];
   const directions = [
     { x: 0, y: -1 }, { x: 0, y: 1 },
     { x: -1, y: 0 }, { x: 1, y: 0 }
   ];
 
   directions.forEach((dir) => {
-    for (let i = 1; i <= bomb.range; i++) {
-      const tx = bomb.x + dir.x * i;
-      const ty = bomb.y + dir.y * i;
+    for (let i = 1; i <= bombRange; i++) {
+      const tx = bombX + dir.x * i;
+      const ty = bombY + dir.y * i;
 
-      if (!map[ty] || map[ty][tx] === 1) break;
+      if (!map[ty] || map[ty][tx] === 1) break; // Mur incassable -> bloque la flamme
       affectedTiles.push({ x: tx, y: ty });
 
-      if (map[ty][tx] === 2) {
-        map[ty][tx] = 0;
-        if (Math.random() < 0.45) {
-          const types = ['BOMB', 'FIRE', 'HEART', 'SKULL'];
-          const type = types[Math.floor(Math.random() * types.length)];
-          powerUps.push({ x: tx, y: ty, type });
-        }
-        break;
+      if (map[ty][tx] === 2) break; // Mur cassable -> la flamme le touche et s'arrête
+    }
+  });
+  return affectedTiles;
+}
+
+function explodeBomb(bomb) {
+  const index = bombs.findIndex((b) => b.id === bomb.id);
+  if (index === -1) return;
+  bombs.splice(index, 1);
+
+  const affectedTiles = getAffectedTilesForBomb(bomb.x, bomb.y, bomb.range);
+
+  // Détruire les murs destructibles touchés
+  affectedTiles.forEach(tile => {
+    if (map[tile.y] && map[tile.y][tile.x] === 2) {
+      map[tile.y][tile.x] = 0;
+      if (Math.random() < 0.45) {
+        const types = ['BOMB', 'FIRE', 'HEART', 'SKULL'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        powerUps.push({ x: tile.x, y: tile.y, type });
       }
     }
   });
 
+  // Tuer les joueurs/bots dans la zone d'effet
   Object.values(players).forEach((player) => {
     if (!player.isAlive) return;
     const hit = affectedTiles.some((t) => t.x === player.x && t.y === player.y);
@@ -268,40 +277,22 @@ function triggerGameOver(message) {
 }
 
 // ==========================================
-// LOGIQUE DES BOTS
+// LOGIQUE DES BOTS (Mise à jour : Cible murs ET ennemis)
 // ==========================================
 
 function computeDangerMap() {
   const danger = new Set();
   bombs.forEach(bomb => {
-    danger.add(`${bomb.x},${bomb.y}`);
-    const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-    dirs.forEach(d => {
-      for (let i = 1; i <= bomb.range; i++) {
-        let tx = bomb.x + d.x * i;
-        let ty = bomb.y + d.y * i;
-        if (!map[ty] || map[ty][tx] === 1) break;
-        danger.add(`${tx},${ty}`);
-        if (map[ty][tx] === 2) break;
-      }
-    });
+    const affected = getAffectedTilesForBomb(bomb.x, bomb.y, bomb.range);
+    affected.forEach(t => danger.add(`${t.x},${t.y}`));
   });
   return danger;
 }
 
 function getFutureDangerMap(x, y, range) {
   const futureDanger = new Set();
-  futureDanger.add(`${x},${y}`);
-  const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-  dirs.forEach(d => {
-    for (let i = 1; i <= range; i++) {
-      let tx = x + d.x * i;
-      let ty = y + d.y * i;
-      if (!map[ty] || map[ty][tx] === 1) break;
-      futureDanger.add(`${tx},${ty}`);
-      if (map[ty][tx] === 2) break;
-    }
-  });
+  const affected = getAffectedTilesForBomb(x, y, range);
+  affected.forEach(t => futureDanger.add(`${t.x},${t.y}`));
   return futureDanger;
 }
 
@@ -330,8 +321,6 @@ function getFirstStepTowardsClosestSafe(startX, startY, dangerMap) {
       const nx = current.x + d.x;
       const ny = current.y + d.y;
       const key = `${nx},${ny}`;
-
-      // Ne pas traverser les bombes lors de la fuite (sauf si on part de sa propre bombe)
       const isBomb = bombs.some(b => b.x === nx && b.y === ny);
 
       if (map[ny] && map[ny][nx] === 0 && !isBomb && !visited.has(key)) {
@@ -366,7 +355,6 @@ function canBotSurviveAfterBomb(bot, dangerMap) {
       const ny = curr.y + d.y;
       const key = `${nx},${ny}`;
 
-      // Une fois sorti du tile d'origine (sa bombe), le bot ne peut plus y retourner
       const isBombBlock = (nx === bot.x && ny === bot.y && curr.x !== bot.x && curr.y !== bot.y) || 
                           bombs.some(b => b.x === nx && b.y === ny);
 
@@ -382,21 +370,25 @@ function canBotSurviveAfterBomb(bot, dangerMap) {
   return false;
 }
 
-function countDestroyableWalls(x, y, range) {
-  let count = 0;
-  const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-  dirs.forEach(d => {
-    for (let i = 1; i <= range; i++) {
-      let tx = x + d.x * i;
-      let ty = y + d.y * i;
-      if (!map[ty] || map[ty][tx] === 1) break;
-      if (map[ty][tx] === 2) {
-        count++;
-        break;
-      }
+// Évalue l'intérêt de poser une bombe en (x, y) : score basé sur les murs cassables ET les ennemis touchés
+function evaluateBombPosition(x, y, range, botId) {
+  const affected = getAffectedTilesForBomb(x, y, range);
+  let score = 0;
+
+  affected.forEach(tile => {
+    // 1 point par mur destructible touché
+    if (map[tile.y] && map[tile.y][tile.x] === 2) {
+      score += 1;
     }
+    // 10 points par ennemi touché (joueur ou autre bot)
+    Object.values(players).forEach(p => {
+      if (p.id !== botId && p.isAlive && p.x === tile.x && p.y === tile.y) {
+        score += 10;
+      }
+    });
   });
-  return count;
+
+  return score;
 }
 
 setInterval(() => {
@@ -419,21 +411,22 @@ setInterval(() => {
         }
       }
 
-      // --- ÉTAPE 2 : POSER UNE BOMBE ---
+      // --- ÉTAPE 2 : POSER UNE BOMBE SI STRATÉGIQUE (Murs ou Ennemis) ---
       const elapsedSinceLastBomb = (now - bot.lastBombTime) / 1000;
       const hasBombHere = bombs.some(b => b.x === bot.x && b.y === bot.y);
 
       if (elapsedSinceLastBomb >= 2.5 && !hasBombHere) {
-        const wallsAround = countDestroyableWalls(bot.x, bot.y, bot.bombRange);
+        const bombScore = evaluateBombPosition(bot.x, bot.y, bot.bombRange, bot.id);
         
-        if (wallsAround > 0 && canBotSurviveAfterBomb(bot, dangerMap)) {
+        // S'il y a un intérêt (score > 0) et qu'il peut survivre
+        if (bombScore > 0 && canBotSurviveAfterBomb(bot, dangerMap)) {
           handlePlaceBomb(bot.id);
           bot.lastBombTime = now;
           return;
         }
       }
 
-      // --- ÉTAPE 3 : DÉPLACEMENT ---
+      // --- ÉTAPE 3 : DÉPLACEMENT VERS OBJECTIFS (Murs ou pourchasser des ennemis) ---
       const possibleMoves = [
         { dir: 'UP', x: bot.x, y: bot.y - 1 },
         { dir: 'DOWN', x: bot.x, y: bot.y + 1 },
@@ -445,11 +438,18 @@ setInterval(() => {
       });
 
       if (possibleMoves.length > 0) {
-        let bestMove = possibleMoves.find(m => countDestroyableWalls(m.x, m.y, bot.bombRange) > 0);
-        if (!bestMove) {
-          bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+        // Privilégier un mouvement qui augmente le score de pose de bombe (se rapprocher de murs ou d'ennemis)
+        let bestMove = possibleMoves.reduce((best, m) => {
+          const score = evaluateBombPosition(m.x, m.y, bot.bombRange, bot.id);
+          return score > best.score ? { move: m, score } : best;
+        }, { move: possibleMoves[0], score: -1 });
+
+        // Si aucun mouvement ne donne un meilleur score, on choisit au hasard parmi les moves safe
+        if (bestMove.score <= 0) {
+          bestMove.move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
         }
-        movePlayer(bot.id, bestMove.dir);
+
+        movePlayer(bot.id, bestMove.move.dir);
       }
     }
   });
