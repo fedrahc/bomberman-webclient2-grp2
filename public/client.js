@@ -1,53 +1,124 @@
 const socket = io();
 
-const menuScreen = document.getElementById('menu-screen');
-const gameScreen = document.getElementById('game-screen');
+// Écrans
+const screens = {
+  menu: document.getElementById('menu-screen'),
+  lobby: document.getElementById('lobby-screen'),
+  game: document.getElementById('game-screen'),
+  gameover: document.getElementById('gameover-screen')
+};
+
+function showScreen(screenName) {
+  Object.values(screens).forEach(s => s.classList.add('hidden'));
+  screens[screenName].classList.remove('hidden');
+}
+
+// Éléments DOM
+const nameInput = document.getElementById('player-name-input');
 const btnSolo = document.getElementById('btn-solo');
 const btnMulti = document.getElementById('btn-multi');
-const btnBack = document.getElementById('btn-back');
-const btnRestart = document.getElementById('btn-restart');
+const btnLaunchMulti = document.getElementById('btn-launch-multi');
+const btnLobbyBack = document.getElementById('btn-lobby-back');
+const btnQuitGame = document.getElementById('btn-quit-game');
+const btnRestartMatch = document.getElementById('btn-restart-match');
+const btnGameoverMenu = document.getElementById('btn-gameover-menu');
+
+const lobbyPlayerList = document.getElementById('lobby-player-list');
+const lobbyStatus = document.getElementById('lobby-status');
 const timerDisplay = document.getElementById('timer-display');
-
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const TILE_SIZE = 40;
-
-let myId = null;
-let map = [];
-let players = {};
-let scores = {};
-let bombs = [];
-let powerUps = [];
-let explosions = [];
-
-const overlay = document.getElementById('game-overlay');
-const overlayTitle = document.getElementById('overlay-title');
-const overlaySubtitle = document.getElementById('overlay-subtitle');
-const overlayScores = document.getElementById('overlay-scores');
 const playerListEl = document.getElementById('player-list');
 const scoreListEl = document.getElementById('score-list');
+const gameoverTitle = document.getElementById('gameover-title');
+const finalScoreBody = document.getElementById('final-score-body');
 
-btnSolo.addEventListener('click', () => socket.emit('setGameMode', 'solo'));
-btnMulti.addEventListener('click', () => socket.emit('setGameMode', 'multi'));
-btnBack.addEventListener('click', () => location.reload());
-btnRestart.addEventListener('click', () => socket.emit('restartGame'));
+// État local du jeu
+const gameState = {
+  myId: null,
+  map: [],
+  players: {},
+  scores: {},
+  bombs: [],
+  powerUps: [],
+  explosions: []
+};
 
+// --- ÉVÉNEMENTS BOUTONS ---
+btnSolo.addEventListener('click', () => {
+  socket.emit('startSolo');
+});
+
+btnMulti.addEventListener('click', () => {
+  const name = nameInput.value.trim();
+  socket.emit('joinLobby', name);
+  showScreen('lobby');
+});
+
+btnLobbyBack.addEventListener('click', () => {
+  socket.emit('leaveLobby');
+  showScreen('menu');
+});
+
+btnLaunchMulti.addEventListener('click', () => {
+  socket.emit('launchMultiGame');
+});
+
+btnQuitGame.addEventListener('click', () => {
+  location.reload();
+});
+
+btnRestartMatch.addEventListener('click', () => {
+  socket.emit('restartMatch');
+});
+
+btnGameoverMenu.addEventListener('click', () => {
+  location.reload();
+});
+
+// --- ÉVÉNEMENTS SOCKET : LOBBY ---
+socket.on('updateLobby', (players) => {
+  lobbyPlayerList.innerHTML = '';
+  let amIHost = false;
+
+  players.forEach((p) => {
+    if (p.id === socket.id && p.isHost) amIHost = true;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${p.name} ${p.id === socket.id ? '<strong>(Vous)</strong>' : ''}</span>
+      <span>${p.isHost ? '👑 Hôte' : 'Prêt'}</span>
+    `;
+    lobbyPlayerList.appendChild(li);
+  });
+
+  if (amIHost) {
+    btnLaunchMulti.classList.remove('hidden');
+    btnLaunchMulti.disabled = players.length < 2;
+    lobbyStatus.innerText = players.length < 2
+      ? 'En attente d’au moins 1 autre joueur...'
+      : 'Prêt à démarrer !';
+  } else {
+    btnLaunchMulti.classList.add('hidden');
+    lobbyStatus.innerText = 'En attente du lancement par l’hôte...';
+  }
+});
+
+socket.on('lobbyError', (msg) => {
+  alert(msg);
+  showScreen('menu');
+});
+
+// --- ÉVÉNEMENTS SOCKET : JEU ---
 socket.on('gameStarted', (data) => {
-  myId = data.id;
-  map = data.map;
-  players = data.players;
-  scores = data.scores || {};
-  bombs = data.bombs || [];
-  powerUps = data.powerUps || [];
-  explosions = [];
-  
-  menuScreen.classList.add('hidden');
-  gameScreen.classList.remove('hidden');
-  overlay.classList.add('hidden');
+  gameState.myId = data.myId;
+  gameState.map = data.map;
+  gameState.players = data.players;
+  gameState.scores = data.scores || {};
+  gameState.bombs = data.bombs || [];
+  gameState.powerUps = data.powerUps || [];
+  gameState.explosions = [];
 
-  updatePlayerList();
-  updateScoreList();
-  requestAnimationFrame(draw);
+  showScreen('game');
+  updateSidebarUI();
+  requestAnimationFrame(gameLoop);
 });
 
 socket.on('timerUpdate', (seconds) => {
@@ -56,72 +127,64 @@ socket.on('timerUpdate', (seconds) => {
   timerDisplay.innerText = `${min}:${sec}`;
 });
 
-socket.on('updateGameData', (data) => {
-  if (data.players) players = data.players;
-  if (data.powerUps) powerUps = data.powerUps;
-  if (data.scores) scores = data.scores;
-  updatePlayerList();
-  updateScoreList();
-});
-
 socket.on('playerMoved', (data) => {
-  if (players[data.id]) {
-    players[data.id].x = data.x;
-    players[data.id].y = data.y;
-  }
-  players = data.players;
-  powerUps = data.powerUps;
-  updatePlayerList();
+  gameState.players = data.players;
+  gameState.powerUps = data.powerUps;
+  updateSidebarUI();
 });
 
 socket.on('bombPlaced', (bomb) => {
-  bombs.push(bomb);
+  gameState.bombs.push(bomb);
 });
 
 socket.on('bombExploded', (data) => {
-  bombs = bombs.filter((b) => b.id !== data.bombId);
-  map = data.mapUpdate;
-  powerUps = data.powerUps;
+  gameState.bombs = gameState.bombs.filter(b => b.id !== data.bombId);
+  gameState.map = data.mapUpdate;
+  gameState.powerUps = data.powerUps;
 
-  explosions.push({
-    tiles: data.affectedTiles,
-    createdAt: Date.now()
-  });
-
+  gameState.explosions.push({ tiles: data.affectedTiles });
   setTimeout(() => {
-    explosions.shift();
+    gameState.explosions.shift();
   }, 400);
 });
 
 socket.on('playerDied', (data) => {
-  if (players[data.id]) {
-    players[data.id].isAlive = false;
+  if (gameState.players[data.id]) {
+    gameState.players[data.id].isAlive = false;
   }
-  updatePlayerList();
+  updateSidebarUI();
 });
 
+// --- ÉVÉNEMENT SOCKET : FIN DE PARTIE (PAGE DÉDIÉE) ---
 socket.on('gameOver', (data) => {
-  scores = data.scores || scores;
-  overlayTitle.innerText = data.winner;
-  overlaySubtitle.innerText = 'La partie est terminée !';
-  
-  // Affichage du récapitulatif dans l'overlay
-  overlayScores.innerHTML = '';
-  Object.values(players).forEach(p => {
-    const pScore = scores[p.id] || 0;
-    const div = document.createElement('div');
-    div.style.color = p.color;
-    div.style.fontWeight = 'bold';
-    div.innerText = `${p.name} : ${pScore} victoire(s)`;
-    overlayScores.appendChild(div);
+  gameState.scores = data.scores;
+  gameState.players = data.players;
+
+  gameoverTitle.innerText = data.winnerMessage;
+  finalScoreBody.innerHTML = '';
+
+  // Trier les joueurs du meilleur score au plus bas
+  const sortedPlayers = Object.values(gameState.players).sort((a, b) => {
+    return (gameState.scores[b.id] || 0) - (gameState.scores[a.id] || 0);
   });
 
-  overlay.classList.remove('hidden');
-  updateScoreList();
+  sortedPlayers.forEach((p) => {
+    const tr = document.createElement('tr');
+    const pts = gameState.scores[p.id] || 0;
+    tr.innerHTML = `
+      <td><span class="player-dot" style="background-color:${p.color}"></span><strong>${p.name}</strong></td>
+      <td style="color:${p.isAlive ? '#2ed573' : '#ff4757'}">${p.isAlive ? 'Survivant' : 'Éliminé'}</td>
+      <td><strong>${pts} pt(s)</strong></td>
+    `;
+    finalScoreBody.appendChild(tr);
+  });
+
+  showScreen('gameover');
 });
 
+// --- CONTRÔLES CLAVIER ---
 document.addEventListener('keydown', (e) => {
-  if (gameScreen.classList.contains('hidden')) return;
+  if (screens.game.classList.contains('hidden')) return;
 
   if (e.key === 'ArrowUp') socket.emit('move', 'UP');
   if (e.key === 'ArrowDown') socket.emit('move', 'DOWN');
@@ -130,139 +193,33 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') socket.emit('placeBomb');
 });
 
-function updatePlayerList() {
+// --- MISE À JOUR INTERFACE LATÉRALE ---
+function updateSidebarUI() {
   playerListEl.innerHTML = '';
-  Object.values(players).forEach((p) => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span><span class="player-dot" style="background-color:${p.color}"></span>${p.name} ${p.id === myId ? '(Vous)' : ''}</span>
+  scoreListEl.innerHTML = '';
+
+  Object.values(gameState.players).forEach((p) => {
+    // Liste joueurs vivants/morts
+    const liPlayer = document.createElement('li');
+    liPlayer.innerHTML = `
+      <span><span class="player-dot" style="background-color:${p.color}"></span>${p.name} ${p.id === gameState.myId ? '(Vous)' : ''}</span>
       <span style="color: ${p.isAlive ? '#2ed573' : '#ff4757'}">${p.isAlive ? 'Vivant' : 'Mort 💀'}</span>
     `;
-    playerListEl.appendChild(li);
-  });
-}
+    playerListEl.appendChild(liPlayer);
 
-function updateScoreList() {
-  scoreListEl.innerHTML = '';
-  Object.values(players).forEach((p) => {
-    const wins = scores[p.id] || 0;
-    const li = document.createElement('li');
-    li.innerHTML = `
+    // Liste des scores
+    const liScore = document.createElement('li');
+    liScore.innerHTML = `
       <span><span class="player-dot" style="background-color:${p.color}"></span>${p.name}</span>
-      <strong>${wins} pts</strong>
+      <strong>${gameState.scores[p.id] || 0} pts</strong>
     `;
-    scoreListEl.appendChild(li);
+    scoreListEl.appendChild(liScore);
   });
 }
 
-function draw() {
-  if (gameScreen.classList.contains('hidden')) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // 1. Carte
-  for (let r = 0; r < map.length; r++) {
-    for (let c = 0; c < map[r].length; c++) {
-      if (map[r][c] === 1) {
-        ctx.fillStyle = '#2f3542';
-        ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = '#1e272c';
-        ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-      } else if (map[r][c] === 2) {
-        ctx.fillStyle = '#e056fd';
-        ctx.fillRect(c * TILE_SIZE + 3, r * TILE_SIZE + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-        ctx.fillStyle = '#be2edd';
-        ctx.fillRect(c * TILE_SIZE + 6, r * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12);
-      }
-    }
-  }
-
-  // 2. Bonus
-  powerUps.forEach((pUp) => {
-    const cx = pUp.x * TILE_SIZE + TILE_SIZE / 2;
-    const cy = pUp.y * TILE_SIZE + TILE_SIZE / 2;
-
-    ctx.fillStyle = pUp.type === 'BOMB' ? '#ffa502' : '#ff4757';
-    ctx.beginPath();
-    ctx.arc(cx, cy, TILE_SIZE / 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(pUp.type === 'BOMB' ? '+B' : '+F', cx, cy);
-  });
-
-  // 3. Bombes
-  bombs.forEach((bomb) => {
-    const cx = bomb.x * TILE_SIZE + TILE_SIZE / 2;
-    const cy = bomb.y * TILE_SIZE + TILE_SIZE / 2;
-    
-    ctx.fillStyle = '#111111';
-    ctx.beginPath();
-    ctx.arc(cx, cy + 2, TILE_SIZE / 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.beginPath();
-    ctx.arc(cx - 4, cy - 2, TILE_SIZE / 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#718093';
-    ctx.fillRect(cx - 4, cy - TILE_SIZE / 3 - 4, 8, 4);
-
-    ctx.strokeStyle = '#e1b12c';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - TILE_SIZE / 3 - 4);
-    ctx.quadraticCurveTo(cx + 6, cy - TILE_SIZE / 2 - 6, cx + 10, cy - TILE_SIZE / 2 - 2);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-
-    ctx.fillStyle = '#ff4757';
-    ctx.beginPath();
-    ctx.arc(cx + 10, cy - TILE_SIZE / 2 - 2, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  // 4. Explosions
-  explosions.forEach((exp) => {
-    ctx.fillStyle = 'rgba(255, 107, 129, 0.85)';
-    exp.tiles.forEach((tile) => {
-      ctx.fillRect(
-        tile.x * TILE_SIZE + 2,
-        tile.y * TILE_SIZE + 2,
-        TILE_SIZE - 4,
-        TILE_SIZE - 4
-      );
-    });
-  });
-
-  // 5. Joueurs et Bots
-  Object.values(players).forEach((player) => {
-    if (!player.isAlive) return;
-
-    const cx = player.x * TILE_SIZE + TILE_SIZE / 2;
-    const cy = player.y * TILE_SIZE + TILE_SIZE / 2;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.arc(cx, cy + 4, TILE_SIZE / 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = player.color;
-    ctx.beginPath();
-    ctx.arc(cx, cy, TILE_SIZE / 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (player.id === myId) {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.lineWidth = 1;
-    }
-  });
-
-  requestAnimationFrame(draw);
+// --- BOUCLE DE RENDU ---
+function gameLoop() {
+  if (screens.game.classList.contains('hidden')) return;
+  renderGame(gameState);
+  requestAnimationFrame(gameLoop);
 }

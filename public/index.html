@@ -2,60 +2,98 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Bomberman Deluxe - Solo & Multi</title>
+  <title>Bomberman SNES Deluxe</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- MENU PRINCIPAL -->
+
+  <!-- 1. MENU PRINCIPAL -->
   <div id="menu-screen" class="screen">
     <div class="menu-box">
-      <h1>💣 Bomberman Deluxe</h1>
-      <p>Choisissez votre mode de jeu :</p>
+      <h1>💣 Bomberman SNES</h1>
+      <p>Entrez votre pseudo pour le multijoueur :</p>
+      <input type="text" id="player-name-input" placeholder="Votre pseudo (ex: BomberMan)" maxlength="15">
       <div class="menu-buttons">
-        <button id="btn-solo" class="btn primary">Mode Solo (vs Bots)</button>
-        <button id="btn-multi" class="btn secondary">Multijoueur en Ligne</button>
+        <button id="btn-solo" class="btn primary">Mode Solo (vs 3 Bots)</button>
+        <button id="btn-multi" class="btn secondary">Salon Multijoueur</button>
       </div>
     </div>
   </div>
 
-  <!-- ÉCRAN DE JEU -->
+  <!-- 2. PAGE D'ATTENTE MULTIJOUEUR (LOBBY) -->
+  <div id="lobby-screen" class="screen hidden">
+    <div class="menu-box lobby-box">
+      <h1>👥 Salon d'attente</h1>
+      <p id="lobby-status">En attente de joueurs (2 à 4 joueurs)...</p>
+      <ul id="lobby-player-list" class="styled-list"></ul>
+      <div class="menu-buttons">
+        <button id="btn-launch-multi" class="btn primary hidden">🚀 Lancer la partie</button>
+        <button id="btn-lobby-back" class="btn secondary">⬅️ Retour au menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. ÉCRAN DE JEU -->
   <div id="game-screen" class="screen hidden">
     <aside id="sidebar">
       <h2>💣 Bomberman</h2>
       <div class="card timer-card">
         <h3>Temps Restant</h3>
-        <p id="timer-display" style="font-size: 1.4rem; font-weight: bold; color: #ff4757; text-align: center;">03:00</p>
+        <p id="timer-display">03:00</p>
       </div>
       <div class="card">
-        <h3>Salon & Joueurs</h3>
-        <ul id="player-list"></ul>
+        <h3>Joueurs en lice</h3>
+        <ul id="player-list" class="styled-list"></ul>
       </div>
       <div class="card">
-        <h3>Tableau des Scores</h3>
-        <ul id="score-list"></ul>
+        <h3>Scores de la session</h3>
+        <ul id="score-list" class="styled-list"></ul>
       </div>
       <div class="card controls-card">
         <h3>Contrôles</h3>
         <p>Déplacement : <strong>Flèches ⬆️⬇️⬅️➡️</strong></p>
         <p>Bombe : <strong>Barre Espace</strong></p>
       </div>
-      <button id="btn-back" class="btn secondary" style="margin-top:auto;">Quitter</button>
+      <button id="btn-quit-game" class="btn secondary" style="margin-top:auto;">Quitter la partie</button>
     </aside>
 
     <main id="game-main">
       <div id="game-container">
         <canvas id="gameCanvas" width="440" height="440"></canvas>
-        <div id="game-overlay" class="hidden">
-          <h1 id="overlay-title">Victoire !</h1>
-          <p id="overlay-subtitle">Partie terminée</p>
-          <div id="overlay-scores"></div>
-          <button id="btn-restart" class="btn primary" style="margin-top: 15px;">🔄 Rejouer une partie</button>
-        </div>
       </div>
     </main>
   </div>
 
+  <!-- 4. PAGE DE FIN DE PARTIE (RÉSULTATS & RELANCE) -->
+  <div id="gameover-screen" class="screen hidden">
+    <div class="menu-box gameover-box">
+      <h1 id="gameover-title">🏆 Victoire !</h1>
+      <p id="gameover-subtitle">Classement et scores de la session :</p>
+      
+      <div class="scoreboard-container">
+        <table id="final-score-table">
+          <thead>
+            <tr>
+              <th>Joueur</th>
+              <th>Statut</th>
+              <th>Victoires</th>
+            </tr>
+          </thead>
+          <tbody id="final-score-body">
+            <!-- Rempli dynamiquement -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="menu-buttons">
+        <button id="btn-restart-match" class="btn primary">🔄 Relancer une manche</button>
+        <button id="btn-gameover-menu" class="btn secondary">🏠 Retour au menu principal</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
+  <script src="render.js"></script>
   <script src="client.js"></script>
 </body>
 </html>
