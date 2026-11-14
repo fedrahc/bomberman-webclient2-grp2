@@ -11,7 +11,7 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 const game = new Game(io);
-let lobbyPlayers = {}; // Joueurs en attente dans le salon multijoueur
+let lobbyPlayers = {};
 
 io.on('connection', (socket) => {
   console.log(`[Connexion] ${socket.id}`);
@@ -25,6 +25,11 @@ io.on('connection', (socket) => {
   socket.on('joinLobby', (playerName) => {
     if (game.isRunning && game.mode === 'multi') {
       socket.emit('lobbyError', 'Une partie est déjà en cours.');
+      return;
+    }
+
+    if (Object.keys(lobbyPlayers).length >= 4) {
+      socket.emit('lobbyError', 'Le salon est complet (4 joueurs max).');
       return;
     }
 
@@ -44,10 +49,15 @@ io.on('connection', (socket) => {
     socket.leave('multiRoom');
   });
 
-  socket.on('launchMultiGame', () => {
+  // Lancement sécurisé avec prise en compte des bots
+  socket.on('launchMultiGame', (data) => {
     const player = lobbyPlayers[socket.id];
-    if (player && player.isHost && Object.keys(lobbyPlayers).length >= 2) {
-      game.initMulti(lobbyPlayers);
+    const fillWithBots = data && typeof data.fillWithBots === 'boolean' ? data.fillWithBots : false;
+    const count = Object.keys(lobbyPlayers).length;
+    const canStart = fillWithBots ? count >= 1 : count >= 2;
+
+    if (player && player.isHost && canStart) {
+      game.initMulti(lobbyPlayers, fillWithBots);
     }
   });
 
@@ -82,7 +92,6 @@ function removePlayerFromLobby(socketId) {
   const wasHost = lobbyPlayers[socketId].isHost;
   delete lobbyPlayers[socketId];
 
-  // Transfert du statut d'hôte si l'hôte quitte
   const remainingIds = Object.keys(lobbyPlayers);
   if (wasHost && remainingIds.length > 0) {
     lobbyPlayers[remainingIds[0]].isHost = true;
@@ -91,10 +100,13 @@ function removePlayerFromLobby(socketId) {
   io.to('multiRoom').emit('updateLobby', Object.values(lobbyPlayers));
 }
 
-// Boucle d'intelligence artificielle pour le mode Solo (toutes les 500ms)
+// Boucle IA pour les bots
 setInterval(() => {
-  if (game.isRunning && game.mode === 'solo' && !game.isGameOver) {
-    updateBots(game);
+  if (game.isRunning && !game.isGameOver) {
+    const hasBots = Object.values(game.players).some(p => p.isBot && p.isAlive);
+    if (hasBots) {
+      updateBots(game);
+    }
   }
 }, 500);
 

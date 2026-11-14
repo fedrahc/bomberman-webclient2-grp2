@@ -21,21 +21,148 @@ body {
   background: radial-gradient(circle, #222436 0%, #0f1016 100%);
 }
 
-.screen.hidden {
+.screen.hidden, .hidden {
   display: none !important;
 }
 
-/* Boîtes centrales (Menu, Lobby, Fin de partie) */
+/* Bouton Paramètres fixe en haut à gauche */
+.settings-corner-btn {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  z-index: 1000;
+  background: #222436;
+  color: #f1f2f6;
+  border: 2px solid #2f3640;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  transition: background 0.2s, transform 0.1s;
+}
+
+.settings-corner-btn:hover {
+  background: #2f3640;
+  border-color: #ff4757;
+}
+
+/* Modale des Paramètres */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(10, 11, 16, 0.85);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.settings-box {
+  width: 440px;
+  text-align: left;
+}
+
+.settings-box h2 {
+  color: #ff4757;
+  text-align: center;
+  margin-bottom: 5px;
+}
+
+.setting-section {
+  background: #1e1f2e;
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid #2f3640;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting-section h3 {
+  font-size: 1rem;
+  color: #f1f2f6;
+}
+
+.hint-text {
+  font-size: 0.8rem !important;
+  color: #a4b0be;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #ff4757;
+  cursor: pointer;
+}
+
+.keybind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keybind-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.keybind-btn {
+  background: #0f1016;
+  color: #ffa502;
+  border: 1px solid #2f3640;
+  padding: 6px 12px;
+  border-radius: 6px;
+  min-width: 110px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.keybind-btn.listening {
+  background: #ff4757;
+  color: white;
+  border-color: white;
+}
+
+/* Option Bots dans le Lobby */
+.bot-option-box {
+  background: #1e1f2e;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #2f3640;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #dfe4ea;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #ff4757;
+  cursor: pointer;
+}
+
+/* Boîtes centrales */
 .menu-box {
   background: #181925;
-  padding: 40px;
+  padding: 35px;
   border-radius: 16px;
   border: 2px solid #2f3640;
   text-align: center;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   width: 400px;
 }
 
@@ -71,8 +198,8 @@ input[type="text"]:focus {
 .menu-buttons {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .btn {
@@ -109,11 +236,7 @@ input[type="text"]:focus {
   background-color: #353b48;
 }
 
-.btn.hidden {
-  display: none;
-}
-
-/* Listes stylisées (Lobby & Sidebar) */
+/* Listes stylisées */
 .styled-list {
   list-style: none;
   display: flex;
@@ -155,7 +278,7 @@ input[type="text"]:focus {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 14px;
   overflow-y: auto;
 }
 
@@ -188,9 +311,8 @@ input[type="text"]:focus {
 }
 
 .controls-card p {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #dfe4ea;
-  margin-bottom: 4px;
 }
 
 #game-main {

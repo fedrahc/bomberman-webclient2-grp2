@@ -36,7 +36,21 @@ class Game {
     this.timerInterval = null;
   }
 
+  // Réinitialisation complète de l'état du jeu (débloque le bug "partie en cours")
+  reset() {
+    this.mode = null;
+    this.isRunning = false;
+    this.isGameOver = false;
+    this.map = [];
+    this.players = {};
+    this.scores = {};
+    this.bombs = [];
+    this.powerUps = [];
+    if (this.timerInterval) clearInterval(this.timerInterval);
+  }
+
   initSolo(socketId) {
+    this.reset();
     this.mode = 'solo';
     this.scores = { [socketId]: 0, bot_1: 0, bot_2: 0, bot_3: 0 };
     this.players = {
@@ -51,17 +65,28 @@ class Game {
     this.startMatch(socketId);
   }
 
-  initMulti(lobbyPlayers) {
+  initMulti(lobbyPlayers, fillWithBots = false) {
+    this.reset();
     this.mode = 'multi';
     this.scores = {};
     this.players = {};
 
-    Object.values(lobbyPlayers).forEach((lp, idx) => {
-      if (idx < 4) {
-        this.players[lp.id] = this.createPlayerObj(lp.id, lp.name, idx, false);
-        this.scores[lp.id] = 0;
-      }
+    const humans = Object.values(lobbyPlayers).slice(0, 4);
+    humans.forEach((lp, idx) => {
+      this.players[lp.id] = this.createPlayerObj(lp.id, lp.name, idx, false);
+      this.scores[lp.id] = 0;
     });
+
+    // Ajout des bots si demandé et si la salle n'est pas pleine
+    if (fillWithBots && humans.length < 4) {
+      let botNum = 1;
+      for (let idx = humans.length; idx < 4; idx++) {
+        const botId = `bot_${botNum}`;
+        this.players[botId] = this.createPlayerObj(botId, `Bot ${botNum}`, idx, true);
+        this.scores[botId] = 0;
+        botNum++;
+      }
+    }
 
     this.startMatch();
   }
@@ -73,6 +98,7 @@ class Game {
       p.bombRange = 2;
       p.x = spawnPositions[idx % spawnPositions.length].x;
       p.y = spawnPositions[idx % spawnPositions.length].y;
+      if (p.isBot) p.lastBombTime = Date.now();
     });
     this.startMatch();
   }
@@ -114,8 +140,10 @@ class Game {
     if (this.mode === 'solo' && targetSocketId) {
       this.io.to(targetSocketId).emit('gameStarted', { ...payload, myId: targetSocketId });
     } else {
-      Object.keys(this.players).forEach((pid) => {
-        this.io.to(pid).emit('gameStarted', { ...payload, myId: pid });
+      Object.values(this.players).forEach((p) => {
+        if (!p.isBot) {
+          this.io.to(p.id).emit('gameStarted', { ...payload, myId: p.id });
+        }
       });
     }
 
@@ -157,18 +185,20 @@ class Game {
       player.x = targetX;
       player.y = targetY;
 
+      let pickedUp = false;
       const pUpIndex = this.powerUps.findIndex(p => p.x === targetX && p.y === targetY);
       if (pUpIndex !== -1) {
         const pUp = this.powerUps[pUpIndex];
         if (pUp.type === 'BOMB' && player.maxBombs < 10) player.maxBombs += 1;
         else if (pUp.type === 'FIRE') player.bombRange += 1;
-        else if (pUp.type === 'SKULL') player.maxBombs = Math.max(1, player.maxBombs - 1);
         this.powerUps.splice(pUpIndex, 1);
+        pickedUp = true;
       }
 
       this.emitToGame('playerMoved', {
         players: this.players,
-        powerUps: this.powerUps
+        powerUps: this.powerUps,
+        pickedUp
       });
     }
   }
@@ -226,7 +256,7 @@ class Game {
       if (this.map[tile.y] && this.map[tile.y][tile.x] === 2) {
         this.map[tile.y][tile.x] = 0;
         if (Math.random() < 0.45) {
-          const types = ['BOMB', 'FIRE', 'SKULL'];
+          const types = ['BOMB', 'FIRE'];
           const type = types[Math.floor(Math.random() * types.length)];
           this.powerUps.push({ x: tile.x, y: tile.y, type });
         }
@@ -281,7 +311,14 @@ class Game {
     if (this.players[id]) {
       delete this.players[id];
       delete this.scores[id];
-      this.checkWinCondition();
+
+      // S'il ne reste plus de joueurs humains, on réinitialise totalement la session
+      const remainingHumans = Object.values(this.players).filter(p => !p.isBot);
+      if (remainingHumans.length === 0) {
+        this.reset();
+      } else {
+        this.checkWinCondition();
+      }
     }
   }
 }

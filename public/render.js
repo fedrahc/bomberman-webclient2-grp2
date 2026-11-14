@@ -5,7 +5,7 @@ const TILE_SIZE = 40;
 function renderGame(state) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 1. Carte (Murs incassables = 1, Blocs destructibles = 2)
+  // 1. Carte
   for (let r = 0; r < state.map.length; r++) {
     for (let c = 0; c < state.map[r].length; c++) {
       if (state.map[r][c] === 1) {
@@ -22,12 +22,12 @@ function renderGame(state) {
     }
   }
 
-  // 2. Bonus (Power-Ups)
+  // 2. Bonus (Uniquement BOMB et FIRE)
   state.powerUps.forEach((pUp) => {
     const cx = pUp.x * TILE_SIZE + TILE_SIZE / 2;
     const cy = pUp.y * TILE_SIZE + TILE_SIZE / 2;
 
-    ctx.fillStyle = pUp.type === 'BOMB' ? '#ffa502' : (pUp.type === 'FIRE' ? '#ff4757' : '#a55eea');
+    ctx.fillStyle = pUp.type === 'BOMB' ? '#ffa502' : '#ff4757';
     ctx.beginPath();
     ctx.arc(cx, cy, TILE_SIZE / 3.5, 0, Math.PI * 2);
     ctx.fill();
@@ -36,8 +36,7 @@ function renderGame(state) {
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const label = pUp.type === 'BOMB' ? '+B' : (pUp.type === 'FIRE' ? '+F' : '💀');
-    ctx.fillText(label, cx, cy);
+    ctx.fillText(pUp.type === 'BOMB' ? '+B' : '+F', cx, cy);
   });
 
   // 3. Bombes

@@ -7,6 +7,53 @@
 </head>
 <body>
 
+  <!-- BOUTON PARAMÈTRES FIXE EN HAUT À GAUCHE -->
+  <button id="btn-open-settings" class="settings-corner-btn" title="Paramètres">⚙️ Paramètres</button>
+
+  <!-- FENÊTRE MODALE DES PARAMÈTRES -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="menu-box settings-box">
+      <h2>⚙️ Paramètres</h2>
+
+      <div class="setting-section">
+        <label for="volume-slider"><strong>🔊 Volume sonore : <span id="volume-value">50%</span></strong></label>
+        <input type="range" id="volume-slider" min="0" max="100" value="50">
+      </div>
+
+      <div class="setting-section">
+        <h3>🎮 Configuration des touches</h3>
+        <p class="hint-text">Cliquez sur une touche puis appuyez sur le clavier pour la modifier.</p>
+        <div class="keybind-list">
+          <div class="keybind-row">
+            <span>Haut</span>
+            <button class="keybind-btn" data-action="UP">ArrowUp</button>
+          </div>
+          <div class="keybind-row">
+            <span>Bas</span>
+            <button class="keybind-btn" data-action="DOWN">ArrowDown</button>
+          </div>
+          <div class="keybind-row">
+            <span>Gauche</span>
+            <button class="keybind-btn" data-action="LEFT">ArrowLeft</button>
+          </div>
+          <div class="keybind-row">
+            <span>Droite</span>
+            <button class="keybind-btn" data-action="RIGHT">ArrowRight</button>
+          </div>
+          <div class="keybind-row">
+            <span>Poser une bombe</span>
+            <button class="keybind-btn" data-action="BOMB">Space</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-buttons">
+        <button id="btn-reset-keys" class="btn secondary">↺ Touches par défaut</button>
+        <button id="btn-close-settings" class="btn primary">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 1. MENU PRINCIPAL -->
   <div id="menu-screen" class="screen">
     <div class="menu-box">
@@ -26,6 +73,15 @@
       <h1>👥 Salon d'attente</h1>
       <p id="lobby-status">En attente de joueurs (2 à 4 joueurs)...</p>
       <ul id="lobby-player-list" class="styled-list"></ul>
+
+      <!-- OPTION BOTS POUR L'HÔTE -->
+      <div id="host-bot-option" class="bot-option-box hidden">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chk-fill-bots" checked>
+          <span>🤖 Compléter les places vides avec des bots (jusqu'à 4)</span>
+        </label>
+      </div>
+
       <div class="menu-buttons">
         <button id="btn-launch-multi" class="btn primary hidden">🚀 Lancer la partie</button>
         <button id="btn-lobby-back" class="btn secondary">⬅️ Retour au menu</button>
@@ -35,7 +91,7 @@
 
   <!-- 3. ÉCRAN DE JEU -->
   <div id="game-screen" class="screen hidden">
-    <aside id="sidebar">
+    <aside id="sidebar" style="padding-top: 60px;">
       <h2>💣 Bomberman</h2>
       <div class="card timer-card">
         <h3>Temps Restant</h3>
@@ -50,9 +106,8 @@
         <ul id="score-list" class="styled-list"></ul>
       </div>
       <div class="card controls-card">
-        <h3>Contrôles</h3>
-        <p>Déplacement : <strong>Flèches ⬆️⬇️⬅️➡️</strong></p>
-        <p>Bombe : <strong>Barre Espace</strong></p>
+        <h3>Contrôles actifs</h3>
+        <p id="active-controls-summary">Déplacement : Flèches | Bombe : Espace</p>
       </div>
       <button id="btn-quit-game" class="btn secondary" style="margin-top:auto;">Quitter la partie</button>
     </aside>
@@ -79,9 +134,7 @@
               <th>Victoires</th>
             </tr>
           </thead>
-          <tbody id="final-score-body">
-            <!-- Rempli dynamiquement -->
-          </tbody>
+          <tbody id="final-score-body"></tbody>
         </table>
       </div>
 
