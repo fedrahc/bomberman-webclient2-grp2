@@ -284,7 +284,7 @@ class Game {
   checkWinCondition() {
     if (this.isGameOver) return;
     const alive = Object.values(this.players).filter(p => p.isAlive);
-    if (alive.length <= 1 && Object.keys(this.players).length > 1) {
+    if (this.isRunning && alive.length <= 1) {
       const winner = alive.length === 1 ? alive[0] : null;
       let message = 'Égalité !';
       if (winner) {
@@ -311,6 +311,11 @@ class Game {
     if (this.players[id]) {
       delete this.players[id];
       delete this.scores[id];
+
+      this.emitToGame('playerMoved', {
+        players: this.players,
+        powerUps: this.powerUps
+      });
 
       // S'il ne reste plus de joueurs humains, on réinitialise totalement la session
       const remainingHumans = Object.values(this.players).filter(p => !p.isBot);
