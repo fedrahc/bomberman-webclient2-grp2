@@ -2,22 +2,37 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const TILE_SIZE = 40;
 
+// Images des tuiles (dessinées dans Piskel en 20×20, affichées en 40×40)
+const sprites = {
+  floor: new Image(),
+  wall: new Image(),
+  bars: new Image()
+};
+sprites.floor.src = 'assets/floor.png';
+sprites.wall.src = 'assets/wall.png';
+sprites.bars.src = 'assets/bars.png';
+
+
 function renderGame(state) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+   
+  // Garder les pixels nets quand on agrandit les images
+  ctx.imageSmoothingEnabled = false;
 
   // 1. Carte
   for (let r = 0; r < state.map.length; r++) {
     for (let c = 0; c < state.map[r].length; c++) {
+      const x = c * TILE_SIZE;
+      const y = r * TILE_SIZE;
+
+      // Le sol est dessiné partout, en dessous
+      ctx.drawImage(sprites.floor, x, y, TILE_SIZE, TILE_SIZE);
+
+      // Puis le mur ou les barreaux par-dessus
       if (state.map[r][c] === 1) {
-        ctx.fillStyle = '#2f3542';
-        ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = '#1e272c';
-        ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.drawImage(sprites.wall, x, y, TILE_SIZE, TILE_SIZE);
       } else if (state.map[r][c] === 2) {
-        ctx.fillStyle = '#878787';
-        ctx.fillRect(c * TILE_SIZE + 3, r * TILE_SIZE + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-        ctx.fillStyle = '#515151';
-        ctx.fillRect(c * TILE_SIZE + 6, r * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+        ctx.drawImage(sprites.bars, x, y, TILE_SIZE, TILE_SIZE);
       }
     }
   }
